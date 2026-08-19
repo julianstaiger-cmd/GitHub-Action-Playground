@@ -1,0 +1,72 @@
+name: 02 - Wetter-Analyse Live Demo
+
+# Erlaubt das manuelle Starten per Button in der GitHub-Oberfläche
+on:
+  workflow_dispatch:
+
+jobs:
+  analyze-weather:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Repository auschecken (Standard Best Practice)
+      - name: Code auschecken
+        uses: actions/checkout@v4
+
+      # 2. Python-Umgebung aufsetzen
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # 3. Benötigte Pakete für API-Abruf und Analyse installieren
+      - name: Abhängigkeiten installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pandas
+
+      # 4. Daten von Open-Meteo abrufen und auswerten
+      - name: Wetterdaten abrufen und analysieren
+        run: |
+          python -c "
+          import requests
+          import pandas as pd
+
+          # API-URL für stündliche Temperaturdaten der nächsten Tage (Beispiel: Berlin)
+          url = 'https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&hourly=temperature_2m'
+          
+          print('--> Lade aktuelle Wetterdaten von Open-Meteo...')
+          response = requests.get(url)
+          
+          if response.status_code == 200:
+              data = response.json()
+              
+              # Extrahieren der stündlichen Zeitstempel und Temperaturen
+              hourly_data = data['hourly']
+              df = pd.DataFrame({
+                  'zeit': hourly_data['time'],
+                  'temperatur_c': hourly_data['temperature_2m']
+              })
+              
+              # Datentypen anpassen & Auswertung mit Pandas
+              df['zeit'] = pd.to_datetime(df['zeit'])
+              
+              max_temp = df['temperatur_c'].max()
+              min_temp = df['temperatur_c'].min()
+              avg_temp = df['temperatur_c'].mean()
+              
+              max_row = df.loc[df['temperatur_c'].idxmax()]
+              
+              # Ausgabe der Ergebnisse direkt im GitHub Action Log
+              print('\n========================================')
+              print('        WETTER-ANALYSE BERLIN           ')
+              print('========================================')
+              print(f'Anzahl Datenpunkte (Stunden): {len(df)}')
+              print(f'Durchschnittstemperatur:    {avg_temp:.1f} °C')
+              print(f'Tiefsttemperatur:           {min_temp:.1f} °C')
+              print(f'Höchsttemperatur:          {max_temp:.1f} °C')
+              print(f'Wärmster Zeitpunkt:         {max_row[\"zeit\"].strftime(\"%d.%m.%Y um %H:%00 Uhr\")}')
+              print('========================================\n')
+          else:
+              print(f'Fehler beim Abruf der Daten. Status-Code: {response.status_code}')
+          "
