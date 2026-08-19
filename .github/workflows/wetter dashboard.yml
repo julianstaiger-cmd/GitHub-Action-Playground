@@ -1,0 +1,138 @@
+name: 02 - Wetter-Analyse & HTML Dashboard
+
+on:
+  workflow_dispatch:
+
+# Berechtigungen setzen, damit der Workflow Dateien ins Repo pushen darf
+permissions:
+  contents: write
+
+jobs:
+  analyze-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Repository auschecken
+      - name: Code auschecken
+        uses: actions/checkout@v4
+
+      # 2. Python-Umgebung einrichten
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # 3. Pakete installieren (inkl. matplotlib für Visualisierung)
+      - name: Abhängigkeiten installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pandas matplotlib
+
+      # 4. Daten abrufen, Diagramm erstellen & HTML rendern
+      - name: HTML Dashboard generieren
+        run: |
+          python -c "
+          import requests
+          import pandas as pd
+          import matplotlib.pyplot as plt
+          import base64
+          from io import BytesIO
+
+          # 1. Daten laden
+          url = 'https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&hourly=temperature_2m'
+          response = requests.get(url)
+          data = response.json()['hourly']
+
+          df = pd.DataFrame({
+              'zeit': pd.to_datetime(data['time']),
+              'temp': data['temperature_2m']
+          })
+
+          # KPIs berechnen
+          avg_temp = df['temp'].mean()
+          max_temp = df['temp'].max()
+          min_temp = df['temp'].min()
+
+          # 2. Diagramm mit Matplotlib erstellen
+          plt.figure(figsize=(10, 4))
+          plt.plot(df['zeit'], df['temp'], color='#1F4E79', linewidth=2)
+          plt.fill_between(df['zeit'], df['temp'], color='#D9E1F2', alpha=0.5)
+          plt.title('7-Tage Temperaturvorhersage (Berlin)', fontsize=14, fontweight='bold')
+          plt.xlabel('Datum')
+          plt.ylabel('Temperatur (°C)')
+          plt.grid(True, linestyle='--', alpha=0.6)
+          plt.tight_layout()
+
+          # Grafik als Base64-String im Speicher kodieren (keine extra Bilddatei nötig)
+          buffer = BytesIO()
+          plt.savefig(buffer, format='png')
+          buffer.seek(0)
+          img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+          plt.close()
+
+          # 3. HTML-Template mit Inline-CSS zusammenbauen
+          html_content = f'''<!DOCTYPE html>
+          <html lang=\"de\">
+          <head>
+              <meta charset=\"UTF-8\">
+              <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+              <title>Wetter-Analyse Live Demo</title>
+              <style>
+                  body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; margin: 0; padding: 40px; color: #333; }}
+                  .container {{ max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }}
+                  h1 {{ color: #1F4E79; margin-top: 0; }}
+                  .kpi-group {{ display: flex; gap: 20px; margin: 25px 0; }}
+                  .kpi-card {{ flex: 1; background: #F9FAFB; border: 1px solid #E5E7EB; border-left: 5px solid #1F4E79; padding: 15px; border-radius: 8px; }}
+                  .kpi-title {{ font-size: 0.85em; color: #6B7280; text-transform: uppercase; font-weight: bold; }}
+                  .kpi-value {{ font-size: 1.8em; font-weight: bold; color: #111827; margin-top: 5px; }}
+                  .chart-container {{ margin-top: 30px; text-align: center; }}
+                  img {{ max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #E5E7EB; }}
+                  .footer {{ margin-top: 30px; font-size: 0.8em; color: #9CA3AF; text-align: center; }}
+              </style>
+          </head>
+          <body>
+              <div class=\"container\">
+                  <h1>🌤️ Wetter-Analyse Dashboard</h1>
+                  <p>Automatisch generierter Bericht via <strong>GitHub Actions</strong></p>
+                  
+                  <div class=\"kpi-group\">
+                      <div class=\"kpi-card\">
+                          <div class=\"kpi-title\">Ø Temperatur</div>
+                          <div class=\"kpi-value\">{avg_temp:.1f} °C</div>
+                      </div>
+                      <div class=\"kpi-card\">
+                          <div class=\"kpi-title\">Höchstwert</div>
+                          <div class=\"kpi-value\">{max_temp:.1f} °C</div>
+                      </div>
+                      <div class=\"kpi-card\">
+                          <div class=\"kpi-title\">Tiefstwert</div>
+                          <div class=\"kpi-value\">{min_temp:.1f} °C</div>
+                      </div>
+                  </div>
+
+                  <div class=\"chart-container\">
+                      <img src=\"data:image/png;base64,{img_base64}\" alt=\"Temperaturverlauf\">
+                  </div>
+
+                  <div class=\"footer\">
+                      Generiert für Julian, Marcus, Christian & Andre | Open-Meteo API
+                  </div>
+              </div>
+          </body>
+          </html>'''
+
+          # HTML in Datei im Repo speichern
+          with open('index.html', 'w', encoding='utf-8') as f:
+              f.write(html_content)
+          
+          print('--> index.html erfolgreich generiert!')
+          "
+
+      # 5. Generierte Datei automatisch ins Repository committen & pushen
+      - name: Änderungen im Repository speichern
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add index.html
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: Automatisches Update des Wetter-Dashboards [skip ci]" && git push)
