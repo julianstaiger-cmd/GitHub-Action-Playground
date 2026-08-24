@@ -75,10 +75,10 @@ jobs:
           Schreibe einen kurzen Text (ca. 4-5 Sätze) mit konkretem Kleidungs- oder Ansage-Tipp fürs Arbeiten.
           '''
 
-          print('--> Sende Daten an Gemini 2.5 Flash...')
+          print('--> Sende Daten an Gemini 3.6 Flash...')
           ai_response = client.models.generate_content(
-              model='gemini-2.5-flash',
-              contents=prompt,
+            model='gemini-3.6-flash',
+            contents=prompt,
           )
           
           ki_text = ai_response.text
